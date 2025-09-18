@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comic Price Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/feather-icons"></script>
+    <style>
+        .dropzone {
+            border: 2px dashed #3b82f6;
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        .dropzone.active {
+            border-color: #10b981;
+            background-color: #f0f9ff;
+        }
+        .histogram-container {
+            height: 400px;
+            position: relative;
+        }
+        .data-table {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .data-table img {
+            min-width: 64px;
+            min-height: 96px;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-blue-600 mb-2">Comic Price Analyzer</h1>
+            <p class="text-gray-600">Upload your Excel file to analyze comic prices from eBay Italy</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- File Upload Section -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Upload Excel File</h2>
+                
+                <div id="dropzone" class="dropzone p-8 text-center cursor-pointer mb-4">
+                    <div class="flex flex-col items-center justify-center">
+                        <i data-feather="upload" class="w-12 h-12 text-blue-500 mb-2"></i>
+                        <p class="text-gray-600">Drag & drop your .xlsx file here</p>
+                        <p class="text-sm text-gray-500 mt-1">or click to browse</p>
+                    </div>
+                    <input type="file" id="fileInput" class="hidden" accept=".xlsx">
+                </div>
+
+                <div id="sheetSelection" class="hidden mb-4">
+                    <label for="sheets" class="block text-sm font-medium text-gray-700 mb-1">Select Sheet:</label>
+                    <select id="sheets" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </select>
+                </div>
+
+                <div class="flex space-x-2">
+                    <button id="downloadBtn" class="hidden bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center">
+                        <i data-feather="download" class="mr-2"></i> Download CSV
+                    </button>
+                    <button id="scrapeBtn" class="hidden bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+                        <i data-feather="search" class="mr-2"></i> Scrape eBay
+                    </button>
+                </div>
+
+                <div id="progressContainer" class="hidden mt-4">
+                    <div class="flex justify-between text-sm text-gray-600 mb-1">
+                        <span>Scraping progress:</span>
+                        <span id="progressText">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Display Section -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-gray-800">Comic Data</h2>
+                        <div class="relative">
+                            <input type="text" id="searchInput" placeholder="Search comics..." class="pl-8 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <i data-feather="search" class="absolute left-2 top-3 text-gray-400"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Comic Details</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Listings Found</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price Range</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Average Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="comicTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- Data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Comic Details Section -->
+                <div id="comicDetails" class="hidden bg-white rounded-xl shadow-md p-6">
+                    <div class="flex flex-col lg:flex-row gap-6">
+                        <div class="lg:w-1/3">
+                            <div class="bg-gray-100 rounded-lg overflow-hidden">
+                                <img id="comicImage" src="" alt="Comic cover" class="comic-image w-full">
+                            </div>
+                            <h3 id="comicTitle" class="text-xl font-bold text-gray-800"></h3>
+                            <div class="grid grid-cols-2 gap-2 mt-2">
+                                <div>
+                                    <p class="text-sm text-gray-500">Issue #</p>
+                                    <p id="comicNumber" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Year</p>
+                                    <p id="comicYear" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Condition</p>
+                                    <p id="comicCondition" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">Avg Price</p>
+                                    <p id="comicAvgPrice" class="font-medium"></p>
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <a id="listingLink" href="#" target="_blank" class="text-blue-600 hover:text-blue-800 text-sm flex items-center">
+                                    View listing <i data-feather="external-link" class="ml-1 w-3 h-3"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="lg:w-2/3">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Price Analysis</h3>
+                            <div class="histogram-container mb-6">
+                                <canvas id="priceHistogram"></canvas>
+                            </div>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h4 class="font-medium text-gray-700 mb-2">Price Statistics</h4>
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div class="bg-white p-3 rounded shadow">
+                                        <p class="text-xs text-gray-500">Min Price</p>
+                                        <p id="minPrice" class="font-bold text-lg">€0.00</p>
+                                    </div>
+                                    <div class="bg-white p-3 rounded shadow">
+                                        <p class="text-xs text-gray-500">Max Price</p>
+                                        <p id="maxPrice" class="font-bold text-lg">€0.00</p>
+                                    </div>
+                                    <div class="bg-white p-3 rounded shadow">
+                                        <p class="text-xs text-gray-500">Median Price</p>
+                                        <p id="medianPrice" class="font-bold text-lg">€0.00</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let workbookData = null;
+        let currentSheetData = [];
+        let allComicsData = [];
+        let priceData = {};
+        let currentChart = null;
+
+        // DOM elements
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const sheetSelection = document.getElementById('sheetSelection');
+        const sheetsSelect = document.getElementById('sheets');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const scrapeBtn = document.getElementById('scrapeBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressText = document.getElementById('progressText');
+        const progressBar = document.getElementById('progressBar');
+        const comicTableBody = document.getElementById('comicTableBody');
+        const searchInput = document.getElementById('searchInput');
+        const comicDetails = document.getElementById('comicDetails');
+        const comicTitle = document.getElementById('comicTitle');
+        const comicNumber = document.getElementById('comicNumber');
+        const comicYear = document.getElementById('comicYear');
+        const comicCondition = document.getElementById('comicCondition');
+        const comicAvgPrice = document.getElementById('comicAvgPrice');
+        const comicImage = document.getElementById('comicImage');
+        const histogramCanvas = document.getElementById('priceHistogram');
+
+        // Event listeners
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('active');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('active');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('active');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) {
+                handleFileUpload(fileInput.files[0]);
+            }
+        });
+        sheetsSelect.addEventListener('change', () => {
+            const sheetName = sheetsSelect.value;
+            currentSheetData = workbookData[sheetName];
+            displayComicData(currentSheetData);
+        });
+        downloadBtn.addEventListener('click', downloadCSV);
+        scrapeBtn.addEventListener('click', startScraping);
+        searchInput.addEventListener('input', filterComics);
+
+        // Functions
+        function handleFileUpload(file) {
+            if (!file.name.endsWith('.xlsx')) {
+                alert('Please upload an Excel file (.xlsx)');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                processExcelData(data);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processExcelData(data) {
+            const workbook = XLSX.read(data, { type: 'array' });
+            workbookData = {};
+            const sheetNames = workbook.SheetNames;
+            
+            // Clear previous selections
+            sheetsSelect.innerHTML = '';
+            
+            // Process each sheet
+            sheetNames.forEach(sheetName => {
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                // Forward-fill missing titles and set default condition
+                let lastTitle = '';
+                const processedData = jsonData.map(row => {
+                    // Handle different possible column name formats
+                    const title = row.Title || row.title || row['Titolo'] || row.titolo || '';
+                    const number = row.Number || row.number || row.Numero || row.numero || '';
+                    const year = row.Year || row.year || row.Anno || row.anno || '';
+                    
+                    if (title && title.trim() !== '') {
+                        lastTitle = title;
+                    } else if (lastTitle) {
+                        row.Title = lastTitle;
+                    } else {
+                        row.Title = 'Unknown Title';
+                    }
+                    
+                    // Handle condition (check all possible column names)
+                    const condition = row.Condition || row.condition || row.Condizione || row.condizione || 'poor';
+                    row.Condition = condition.trim() === '' ? 'poor' : condition;
+                    
+                    // Ensure we have standard column names
+                    row.Title = row.Title || title;
+                    row.Number = number;
+                    row.Year = year;
+                    
+                    return row;
+                });
+                
+                workbookData[sheetName] = processedData;
+                
+                // Add to sheet selection dropdown
+                const option = document.createElement('option');
+                option.value = sheetName;
+                option.textContent = sheetName;
+                sheetsSelect.appendChild(option);
+            });
+            
+            // Show sheet selection and buttons
+            sheetSelection.classList.remove('hidden');
+            downloadBtn.classList.remove('hidden');
+            scrapeBtn.classList.remove('hidden');
+            
+            // Display first sheet by default
+            currentSheetData = workbookData[sheetNames[0]];
+            displayComicData(currentSheetData);
+            
+            // Combine all sheets for search/filter
+            allComicsData = [];
+            sheetNames.forEach(sheetName => {
+                allComicsData = allComicsData.concat(workbookData[sheetName]);
+            });
+        }
+
+        function displayComicData(data) {
+            comicTableBody.innerHTML = '';
+            
+            let lastTitle = '';
+            data.forEach((comic, index) => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 cursor-pointer';
+                row.dataset.index = index;
+                
+                // Add spacing if there was an empty line before this comic
+                if (index > 0 && data[index-1].Title === '' && comic.Title !== '') {
+                    const spacer = document.createElement('tr');
+                    spacer.className = 'h-4';
+                    spacer.innerHTML = '<td colspan="4"></td>';
+                    comicTableBody.appendChild(spacer);
+                }
+                
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-medium text-gray-900">${comic.Title || lastTitle}</div>
+                        <div class="text-sm text-gray-500">
+                            <span class="font-medium">Issue:</span> ${comic.Number || 'N/A'} | 
+                            <span class="font-medium">Year:</span> ${comic.Year || 'N/A'} | 
+                            <span class="font-medium">Condition:</span> ${comic.Condition}
+                        </div>
+                    </td>
+                    ${comic.Title ? lastTitle = comic.Title : ''}
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`]?.prices?.length || 0}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`]?.prices ? 
+                         `€${Math.min(...priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`].prices).toFixed(2)} - €${Math.max(...priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`].prices).toFixed(2)}` : 
+                         'N/A'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium">
+                        ${priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`]?.avgPrice ? 
+                         `€${priceData[`${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`].avgPrice.toFixed(2)}` : 
+                         'N/A'}
+                    </td>
+                `;
+                
+                row.addEventListener('click', () => showComicDetails(comic));
+                comicTableBody.appendChild(row);
+            });
+        }
+
+        function filterComics() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const filteredData = currentSheetData.filter(comic => {
+                return (
+                    (comic.Title && comic.Title.toLowerCase().includes(searchTerm)) ||
+                    (comic.Number && comic.Number.toString().toLowerCase().includes(searchTerm)) ||
+                    (comic.Year && comic.Year.toString().toLowerCase().includes(searchTerm)) ||
+                    (comic.Condition && comic.Condition.toLowerCase().includes(searchTerm))
+                );
+            });
+            displayComicData(filteredData);
+        }
+
+        function downloadCSV() {
+            const sheetName = sheetsSelect.value;
+            const data = workbookData[sheetName];
+            
+            // Add scraped prices if available
+            const enhancedData = data.map(comic => {
+                const key = `${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`;
+                const priceInfo = priceData[key] || {};
+                return {
+                    title: comic.Title || '',
+                    number: comic.Number,
+                    year: comic.Year,
+                    condition: comic.Condition,
+                    average_price: priceInfo.avgPrice ? `€${priceInfo.avgPrice.toFixed(2)}` : 'N/A',
+                    prices: priceInfo.prices ? priceInfo.prices.join(', ') : 'N/A'
+                };
+            });
+            
+            const csv = XLSX.utils.json_to_sheet(enhancedData);
+            const csvOutput = XLSX.utils.sheet_to_csv(csv);
+            
+            const blob = new Blob([csvOutput], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `${sheetName}_with_prices.csv`);
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        async function startScraping() {
+            if (!currentSheetData || currentSheetData.length === 0) {
+                alert('No data to scrape');
+                return;
+            }
+            
+            progressContainer.classList.remove('hidden');
+            scrapeBtn.disabled = true;
+            scrapeBtn.classList.add('opacity-50');
+            
+            const totalComics = currentSheetData.length;
+            let processed = 0;
+            
+            for (const comic of currentSheetData) {
+                try {
+                    await scrapeComicPrices(comic);
+                    processed++;
+                    const progress = Math.round((processed / totalComics) * 100);
+                    progressText.textContent = `${progress}%`;
+                    progressBar.style.width = `${progress}%`;
+                    
+                    // Update the table row for this comic
+                    displayComicData(currentSheetData);
+                } catch (error) {
+                    console.error(`Error scraping ${comic.Title} #${comic.Number}:`, error);
+                }
+            }
+            
+            scrapeBtn.disabled = false;
+            scrapeBtn.classList.remove('opacity-50');
+        }
+
+        async function scrapeComicPrices(comic) {
+            // In a real app, this would call the eBay API
+            // For this demo, we'll simulate with mock data
+            
+            const key = `${comic.Title || 'Unknown'}_${comic.Number || '0'}_${comic.Year || '0'}_${comic.Condition || 'poor'}`;
+            
+            // Skip if we already have data for this comic
+            if (priceData[key]) return;
+            
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+            
+            // Generate mock prices (normally from eBay API)
+            const prices = [];
+            const priceCount = 5 + Math.floor(Math.random() * 10);
+            
+            for (let i = 0; i < priceCount; i++) {
+                // Base price based on condition
+                let basePrice = 5 + Math.random() * 50;
+                if (comic.Condition && comic.Condition.toLowerCase().includes('mint')) {
+                    basePrice *= 2;
+                } else if (comic.Condition && comic.Condition.toLowerCase().includes('poor')) {
+                    basePrice *= 0.5;
+                }
+                
+                // Add some randomness
+                const price = basePrice * (0.8 + Math.random() * 0.4);
+                if (price < 1000) { // Filter out very high prices
+                    prices.push(parseFloat(price.toFixed(2)));
+                }
+            }
+            
+            // Calculate average
+            const avgPrice = prices.length > 0 ? 
+                prices.reduce((sum, price) => sum + price, 0) / prices.length : 
+                null;
+            
+            const listingUrl = `https://www.ebay.it/itm/${Math.floor(Math.random() * 1000000000)}`;
+            
+            // Store the data
+            priceData[key] = {
+                prices,
+                avgPrice,
+                listingUrl
+            };
+        }
+
+        function showComicDetails(comic) {
+            const key = `${comic.Title}_${comic.Number}_${comic.Year}_${comic.Condition}`;
+            const pricesInfo = priceData[key];
+            
+            // Update basic info
+            comicTitle.textContent = comic.Title;
+            comicNumber.textContent = comic.Number || 'N/A';
+            comicYear.textContent = comic.Year || 'N/A';
+            comicCondition.textContent = comic.Condition;
+            
+            // Update price and image
+            if (pricesInfo) {
+                comicAvgPrice.textContent = pricesInfo.avgPrice ? `€${pricesInfo.avgPrice.toFixed(2)}` : 'N/A';
+                comicImage.src = pricesInfo.imageUrl || '';
+                comicImage.alt = `${comic.Title} cover`;
+                document.getElementById('listingLink').href = pricesInfo.listingUrl || '#';
+                
+                // Update price statistics
+                if (pricesInfo.prices && pricesInfo.prices.length > 0) {
+                    const sortedPrices = [...pricesInfo.prices].sort((a, b) => a - b);
+                    const minPrice = sortedPrices[0];
+                    const maxPrice = sortedPrices[sortedPrices.length - 1];
+                    const medianPrice = sortedPrices.length % 2 === 0 ? 
+                        (sortedPrices[sortedPrices.length/2 - 1] + sortedPrices[sortedPrices.length/2]) / 2 :
+                        sortedPrices[Math.floor(sortedPrices.length/2)];
+                    
+                    document.getElementById('minPrice').textContent = `€${minPrice.toFixed(2)}`;
+                    document.getElementById('maxPrice').textContent = `€${maxPrice.toFixed(2)}`;
+                    document.getElementById('medianPrice').textContent = `€${medianPrice.toFixed(2)}`;
+                } else {
+                    document.getElementById('minPrice').textContent = '€0.00';
+                    document.getElementById('maxPrice').textContent = '€0.00';
+                    document.getElementById('medianPrice').textContent = '€0.00';
+                }
+                
+                // Create histogram
+                createHistogram(pricesInfo.prices);
+            } else {
+                comicAvgPrice.textContent = 'N/A';
+                comicImage.src = '';
+                comicImage.alt = 'No image available';
+                
+                // Reset price statistics
+                document.getElementById('minPrice').textContent = '€0.00';
+                document.getElementById('maxPrice').textContent = '€0.00';
+                document.getElementById('medianPrice').textContent = '€0.00';
+                
+                // Clear any existing chart
+                if (currentChart) {
+                    currentChart.destroy();
+                }
+            }
+            
+            // Show the details section
+            comicDetails.classList.remove('hidden');
+        }
+
+        function createHistogram(prices) {
+            if (!prices || prices.length === 0) return;
+            
+            // Clear any existing chart
+            if (currentChart) {
+                currentChart.destroy();
+            }
+            
+            // Create chart
+            const ctx = histogramCanvas.getContext('2d');
+            currentChart = createChart(ctx, prices);
+        }
+
+        // Mini histogram modal
+        const miniHistogramModal = document.createElement('div');
+        miniHistogramModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden';
+        miniHistogramModal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold" id="miniHistogramTitle"></h3>
+                    <button onclick="miniHistogramModal.classList.add('hidden')" class="text-gray-500 hover:text-gray-700">
+                        <i data-feather="x"></i>
+                    </button>
+                </div>
+                <div class="histogram-container" style="height: 300px;">
+                    <canvas id="miniPriceHistogram"></canvas>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(miniHistogramModal);
+
+        function showMiniHistogram(event, comicKey) {
+            event.stopPropagation();
+            const prices = priceData[comicKey]?.prices;
+            if (!prices || prices.length === 0) return;
+
+            const comic = currentSheetData.find(c => 
+                `${c.Title}_${c.Number}_${c.Year}_${c.Condition}` === comicKey
+            );
+
+            document.getElementById('miniHistogramTitle').textContent = 
+                `${comic.Title} #${comic.Number} (${comic.Year}) - ${comic.Condition}`;
+
+            const ctx = document.getElementById('miniPriceHistogram').getContext('2d');
+            
+            // Clear any existing chart
+            if (window.miniChart) {
+                window.miniChart.destroy();
+            }
+
+            // Create the mini chart
+            window.miniChart = createChart(ctx, prices);
+            miniHistogramModal.classList.remove('hidden');
+        }
+
+        function createChart(ctx, prices) {
+            const binCount = Math.min(20, Math.max(5, Math.floor(Math.sqrt(prices.length))));
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const range = maxPrice - minPrice;
+            const binSize = range / binCount;
+            
+            const bins = Array(binCount).fill(0);
+            const binLabels = [];
+            
+            for (let i = 0; i < binCount; i++) {
+                const binStart = minPrice + i * binSize;
+                const binEnd = binStart + binSize;
+                binLabels.push(`€${binStart.toFixed(0)}-€${binEnd.toFixed(0)}`);
+                bins[i] = prices.filter(price => 
+                    price >= binStart && (i === binCount - 1 ? price <= binEnd : price < binEnd)
+                ).length;
+            }
+            
+            const meanPrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+            
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: binLabels,
+                    datasets: [{
+                        label: 'Listings',
+                        data: bins,
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Listings' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Price Range' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        annotation: {
+                            annotations: {
+                                line1: {
+                                    type: 'line',
+                                    yMin: 0,
+                                    yMax: Math.max(...bins),
+                                    xMin: meanPrice,
+                                    xMax: meanPrice,
+                                    borderColor: 'red',
+                                    borderWidth: 2,
+                                    borderDash: [6, 6],
+                                    label: {
+                                        content: `Mean: €${meanPrice.toFixed(2)}`,
+                                        enabled: true,
+                                        position: 'top'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize feather icons
+        feather.replace();
+        
+        // Update external link icons and add image fallback
+        document.querySelectorAll('a[target="_blank"]').forEach(link => {
+            const icon = document.createElement('i');
+            icon.setAttribute('data-feather', 'external-link');
+            icon.className = 'inline ml-1 w-3 h-3';
+            link.appendChild(icon);
+        });
+        
+        feather.replace();
+    </script>
+</body>
+</html>
